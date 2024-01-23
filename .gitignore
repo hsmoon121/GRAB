@@ -1,4 +1,6 @@
 processed/
 dataset/
 smplx_models/
+__pycache__/
 .DS_Store
+.pyc

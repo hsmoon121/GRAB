@@ -12,25 +12,30 @@
 # Contact: ps-license@tuebingen.mpg.de
 #
 
-
 import numpy as np
 import torch
 import logging
 from copy import copy
+from pytorch3d.transforms import axis_angle_to_matrix
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 to_cpu = lambda tensor: tensor.detach().cpu().numpy()
+
 
 def parse_npz(npz, allow_pickle=True):
     npz = np.load(npz, allow_pickle=allow_pickle)
     npz = {k: npz[k].item() for k in npz.files}
     return DotDict(npz)
 
+
 def params2torch(params, dtype = torch.float32):
     return {k: torch.from_numpy(v).type(dtype) for k, v in params.items()}
 
+
 def prepare_params(params, frame_mask, dtype = np.float32):
     return {k: v[frame_mask].astype(dtype) for k, v in params.items()}
+
 
 def DotDict(in_dict):
 
@@ -39,6 +44,7 @@ def DotDict(in_dict):
        if isinstance(v,dict):
            out_dict[k] = DotDict(v)
     return dotdict(out_dict)
+
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -53,6 +59,7 @@ def append2dict(source, data):
             source[k] += data[k].astype(np.float32)
         else:
             source[k].append(data[k].astype(np.float32))
+
 
 def np2torch(item):
     out = {}
@@ -70,6 +77,7 @@ def np2torch(item):
             out[k] = torch.from_numpy(v)
     return out
 
+
 def to_tensor(array, dtype=torch.float32):
     if not torch.is_tensor(array):
         array = torch.tensor(array)
@@ -83,6 +91,7 @@ def to_np(array, dtype=np.float32):
         array = array.detach().cpu().numpy()
     return array
 
+
 def makepath(desired_path, isfile = False):
     '''
     if the path does not exist make it
@@ -95,6 +104,7 @@ def makepath(desired_path, isfile = False):
     else:
         if not os.path.exists(desired_path): os.makedirs(desired_path)
     return desired_path
+
 
 def makelogger(log_dir,mode='w'):
 
@@ -144,6 +154,65 @@ def euler(rots, order='xyz', units='deg'):
         return rotmats[0]
     else:
         return rotmats
+    
+
+def normalize_vector(v):
+    """ Normalize a vector. """
+    return v / (v.norm(p=2, dim=-1, keepdim=True) + 1e-6)
+
+
+def complete_rot_matrix(R):
+    """ Complete the rotation matrix by calculating the third column. """
+    third_col = torch.cross(R[:, :, 0], R[:, :, 1])
+    return torch.cat((R, third_col.unsqueeze(-1)), dim=-1)
+
+
+def rot_matrix_to_axis_angle(R):
+    """ Convert a rotation matrix to an axis-angle representation. """
+    angles = torch.acos((R.trace() - 1) / 2).unsqueeze(-1)
+    xyz = torch.stack((R[:, 2, 1] - R[:, 1, 2], R[:, 0, 2] - R[:, 2, 0], R[:, 1, 0] - R[:, 0, 1]), dim=1)
+    axes = normalize_vector(xyz)
+    return axes * angles
+    
+
+def axis_angle_to_rot6d(axis_angle):
+    """
+    Convert a 3D axis-angle representation to a 6D continuous rotation representation.
+
+    Args:
+    - axis_angle (Tensor): a tensor of shape (batch_size, joint_num, 3) representing the axis-angle.
+
+    Returns:
+    - Tensor: a tensor of shape (batch_size, joint_num, 6) representing the 6D continuous rotation.
+    """
+    batch_size, joint_num, _ = axis_angle.shape
+    rot_matrix = axis_angle_to_matrix(axis_angle.view(-1, 3))
+
+    # Extract two orthogonal unit vectors
+    rot6d = rot_matrix[:, :, :2].reshape(-1, 6)
+    return rot6d.view(batch_size, joint_num, 6)
+
+
+def rot6d_to_axis_angle(rot6d):
+    """
+    Convert a 6D continuous rotation representation to a 3D axis-angle representation.
+
+    Args:
+    - rot6d (Tensor): a tensor of shape (batch_size, joint_num, 6) representing the 6D continuous rotation.
+
+    Returns:
+    - Tensor: a tensor of shape (batch_size, joint_num, 3) representing the axis-angle.
+    """
+    batch_size, joint_num, _ = rot6d.shape
+
+    # Reshape 6D rotation to 3x2 matrix and then complete it to a 3x3 rotation matrix
+    R = rot6d.view(-1, 6).reshape(-1, 3, 2)
+    R = complete_rot_matrix(R)
+
+    # Convert rotation matrix to axis-angle
+    axis_angle = rot_matrix_to_axis_angle(R)
+    return axis_angle.view(batch_size, joint_num, 3)
+
 
 def create_video(path, fps=30,name='movie'):
     import os
@@ -161,6 +230,7 @@ def create_video(path, fps=30,name='movie'):
     subprocess.call(cmd.split(' '))
     while not os.path.exists(movie_path):
         continue
+
 
 # mapping the contact ids to each body part in smplx        
 contact_ids={'Body': 1,
