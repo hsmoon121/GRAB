@@ -1,6 +1,8 @@
-processed/
 dataset/
+processed/
+render/
 smplx_models/
-__pycache__/
+zip_dataset/
+__pycache__
 .DS_Store
 .pyc

@@ -1,4 +1,4 @@
-numpy>=1.16.2
+numpy==1.23.1
 torch>=1.0.1.post2
 torchgeometry>=0.1.2
 smplx >=0.1.2
@@ -7,3 +7,6 @@ tqdm
 pyrender>=0.1.23
 trimesh>=2.37.6
 PyYAML
+chumpy==0.70
+imageio
+pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git@f34104cf6ebefacd7b7e07955ee7aaa823e616ac
